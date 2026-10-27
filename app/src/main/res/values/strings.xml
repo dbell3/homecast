@@ -23,6 +23,14 @@
     <string name="browser_choose_title">Videos on this page</string>
     <string name="browser_not_supported">Not supported</string>
     <string name="browser_badge_master">Master</string>
+    <string name="browser_auth_title">Sign in</string>
+    <string name="browser_auth_message">%1$s requires a username and password (%2$s).</string>
+    <string name="browser_auth_username">Username</string>
+    <string name="browser_auth_password">Password</string>
+    <string name="browser_auth_show_password">Show</string>
+    <string name="browser_auth_hide_password">Hide</string>
+    <string name="browser_auth_sign_in">Sign in</string>
+    <string name="browser_auth_cancel">Cancel</string>
     <string name="video_kind_hls">HLS</string>
     <string name="video_kind_file">Video file</string>
     <string name="video_kind_dash">DASH</string>

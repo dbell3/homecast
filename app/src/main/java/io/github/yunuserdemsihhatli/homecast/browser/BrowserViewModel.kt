@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -30,6 +31,12 @@ data class BrowserUiState(
     val blockedCount: Int = 0,
 )
 
+/** An HTTP authentication challenge the screen should show a credential dialog for ([host]/[realm] are display only). */
+data class HttpAuthPrompt(
+    val host: String,
+    val realm: String,
+)
+
 /** State of the browser screen; receives page events from [BrowserWebViewClient] and hands videos to the TV. */
 class BrowserViewModel(
     private val store: CandidateStore,
@@ -44,6 +51,19 @@ class BrowserViewModel(
 
     /** Failures of "Play on TV", to show to the user. */
     val errors: Flow<PlaybackError> = playback.errors
+
+    private val _authPrompt = MutableStateFlow<HttpAuthPrompt?>(null)
+
+    /** The HTTP authentication challenge the screen should prompt for, or null when there is none. */
+    val authPrompt: StateFlow<HttpAuthPrompt?> = _authPrompt.asStateFlow()
+
+    /** Callbacks of the pending challenge; main thread only, matched to [_authPrompt]. */
+    private var pendingAuth: PendingAuth? = null
+
+    private class PendingAuth(
+        val proceed: (String, String) -> Unit,
+        val cancel: () -> Unit,
+    )
 
     /** Returns the URL to load: http(s) as-is, something host-like ("foo.com/x") over https, anything else a search. */
     fun onAddressSubmitted(input: String): String {
@@ -95,6 +115,37 @@ class BrowserViewModel(
     /** Called from WebView network threads for every blocked request or navigation. */
     override fun onBlocked() {
         page.update { it.copy(blockedCount = it.blockedCount + 1) }
+    }
+
+    /** An HTTP auth challenge: cancel any one still pending, then prompt for this one. Main thread. */
+    override fun onHttpAuthRequest(
+        host: String,
+        realm: String,
+        proceed: (user: String, password: String) -> Unit,
+        cancel: () -> Unit,
+    ) {
+        pendingAuth?.cancel?.invoke()
+        pendingAuth = PendingAuth(proceed, cancel)
+        _authPrompt.value = HttpAuthPrompt(host, realm)
+    }
+
+    /** The user entered credentials in the auth dialog: authenticate the challenge and dismiss the dialog. */
+    fun submitHttpAuth(
+        user: String,
+        password: String,
+    ) {
+        val auth = pendingAuth ?: return
+        pendingAuth = null
+        _authPrompt.value = null
+        auth.proceed(user, password)
+    }
+
+    /** The user dismissed the auth dialog: cancel the challenge (the page shows its unauthorised response). */
+    fun cancelHttpAuth() {
+        val auth = pendingAuth ?: return
+        pendingAuth = null
+        _authPrompt.value = null
+        auth.cancel()
     }
 
     /** Sends [candidate] to the TV with every captured subtitle, switching on the one the page is showing. */

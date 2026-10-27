@@ -66,6 +66,13 @@ class CaptureInstrumentedTest {
         override fun onBlocked() {
             blocked.incrementAndGet()
         }
+
+        override fun onHttpAuthRequest(
+            host: String,
+            realm: String,
+            proceed: (String, String) -> Unit,
+            cancel: () -> Unit,
+        ) = cancel()
     }
 
     @Before fun setUp() {

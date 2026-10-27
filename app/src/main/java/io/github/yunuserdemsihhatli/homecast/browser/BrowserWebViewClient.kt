@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.util.Log
 import android.webkit.CookieManager
+import android.webkit.HttpAuthHandler
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -39,6 +40,18 @@ interface BrowserEvents {
     )
 
     fun onBlocked()
+
+    /**
+     * The page (host [host], realm [realm]) asked for HTTP authentication. Call [proceed] with the credentials the
+     * user entered, or [cancel] to dismiss the challenge (the page then shows its unauthorised response). Exactly one
+     * of the two must be called. Arrives on the main thread.
+     */
+    fun onHttpAuthRequest(
+        host: String,
+        realm: String,
+        proceed: (user: String, password: String) -> Unit,
+        cancel: () -> Unit,
+    )
 }
 
 /**
@@ -198,6 +211,25 @@ class BrowserWebViewClient
             error: WebResourceError,
         ) {
             if (request.isForMainFrame) redirectGuard.onNavigationEnded()
+        }
+
+        /**
+         * An HTTP authentication challenge (e.g. 401 Basic): ask the user for credentials. Without this override the
+         * WebView default cancels the challenge and the protected page never loads. [handler] is wrapped in plain
+         * lambdas so the screen can prompt without touching platform types. Called on the main thread.
+         */
+        override fun onReceivedHttpAuthRequest(
+            view: WebView,
+            handler: HttpAuthHandler,
+            host: String,
+            realm: String,
+        ) {
+            events.onHttpAuthRequest(
+                host = host,
+                realm = realm,
+                proceed = { user, password -> handler.proceed(user, password) },
+                cancel = { handler.cancel() },
+            )
         }
 
         /** A crashed or killed renderer must not take the app down: the owner replaces the dead WebView. */

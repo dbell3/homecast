@@ -133,6 +133,62 @@ class BrowserViewModelTest {
         assertEquals(0, vm.state.value.blockedCount)
     }
 
+    @Test fun httpAuthRequestRaisesAPrompt() {
+        val vm = BrowserViewModel(store, playback)
+        assertEquals(null, vm.authPrompt.value)
+
+        vm.onHttpAuthRequest("example.com", "Restricted Content", proceed = { _, _ -> }, cancel = {})
+
+        assertEquals(HttpAuthPrompt("example.com", "Restricted Content"), vm.authPrompt.value)
+    }
+
+    @Test fun submitHttpAuthForwardsCredentialsAndClearsThePrompt() {
+        val vm = BrowserViewModel(store, playback)
+        var proceeded: Pair<String, String>? = null
+        var cancelled = false
+        vm.onHttpAuthRequest(
+            host = "example.com",
+            realm = "realm",
+            proceed = { u, p -> proceeded = u to p },
+            cancel = { cancelled = true },
+        )
+
+        vm.submitHttpAuth("alice", "s3cret")
+
+        assertEquals("alice" to "s3cret", proceeded)
+        assertTrue(!cancelled)
+        assertEquals(null, vm.authPrompt.value)
+    }
+
+    @Test fun cancelHttpAuthCancelsTheChallengeAndClearsThePrompt() {
+        val vm = BrowserViewModel(store, playback)
+        var proceeded = false
+        var cancelled = false
+        vm.onHttpAuthRequest(
+            host = "example.com",
+            realm = "realm",
+            proceed = { _, _ -> proceeded = true },
+            cancel = { cancelled = true },
+        )
+
+        vm.cancelHttpAuth()
+
+        assertTrue(cancelled)
+        assertTrue(!proceeded)
+        assertEquals(null, vm.authPrompt.value)
+    }
+
+    @Test fun aSecondHttpAuthRequestCancelsTheFirst() {
+        val vm = BrowserViewModel(store, playback)
+        var firstCancelled = false
+        vm.onHttpAuthRequest("a.example", "r1", proceed = { _, _ -> }, cancel = { firstCancelled = true })
+
+        vm.onHttpAuthRequest("b.example", "r2", proceed = { _, _ -> }, cancel = {})
+
+        assertTrue(firstCancelled)
+        assertEquals(HttpAuthPrompt("b.example", "r2"), vm.authPrompt.value)
+    }
+
     @Test fun candidatesFlowIntoUiState() {
         val vm = BrowserViewModel(store, playback)
 

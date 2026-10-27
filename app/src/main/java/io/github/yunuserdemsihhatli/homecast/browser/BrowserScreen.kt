@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -49,6 +50,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -78,6 +81,7 @@ fun BrowserScreen(
     onPlayOnTv: (VideoCandidate) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val authPrompt by viewModel.authPrompt.collectAsStateWithLifecycle()
     val resources = LocalResources.current
     val snackbar = remember { SnackbarHostState() }
     var showChooser by remember { mutableStateOf(false) }
@@ -141,6 +145,74 @@ fun BrowserScreen(
             )
         }
     }
+
+    authPrompt?.let { prompt ->
+        HttpAuthDialog(
+            prompt = prompt,
+            onConfirm = viewModel::submitHttpAuth,
+            onDismiss = viewModel::cancelHttpAuth,
+        )
+    }
+}
+
+/** A username/password dialog for an HTTP authentication challenge (e.g. a site behind Basic auth). */
+@Composable
+private fun HttpAuthDialog(
+    prompt: HttpAuthPrompt,
+    onConfirm: (user: String, password: String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var user by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.browser_auth_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.browser_auth_message, prompt.host, prompt.realm))
+                TextField(
+                    value = user,
+                    onValueChange = { user = it },
+                    singleLine = true,
+                    label = { Text(stringResource(R.string.browser_auth_username)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    singleLine = true,
+                    label = { Text(stringResource(R.string.browser_auth_password)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    visualTransformation =
+                        if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        TextButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Text(
+                                stringResource(
+                                    if (passwordVisible) {
+                                        R.string.browser_auth_hide_password
+                                    } else {
+                                        R.string.browser_auth_show_password
+                                    },
+                                ),
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(user, password) }) {
+                Text(stringResource(R.string.browser_auth_sign_in))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.browser_auth_cancel)) }
+        },
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

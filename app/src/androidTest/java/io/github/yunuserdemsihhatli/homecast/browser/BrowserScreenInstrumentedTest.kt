@@ -43,6 +43,7 @@ class BrowserScreenInstrumentedTest {
     private val firstUrl get() = "http://127.0.0.1:${server.port}/first.html"
     private val secondUrl get() = "http://127.0.0.1:${server.port}/second.html"
     private val clipUrl get() = "http://127.0.0.1:${server.port}/media/clip.mp4"
+    private val protectedUrl get() = "http://127.0.0.1:${server.port}/protected.html"
 
     @Before fun setUp() {
         // No first-launch permission / battery dialogs over the WebView.
@@ -78,6 +79,21 @@ class BrowserScreenInstrumentedTest {
 
                         "/autopopup.html" -> {
                             html(asset("autopopup.html"))
+                        }
+
+                        "/protected.html" -> {
+                            // HTTP Basic auth: challenge until the request carries credentials.
+                            if (request.headers["Authorization"] == null) {
+                                MockResponse
+                                    .Builder()
+                                    .code(401)
+                                    .setHeader("WWW-Authenticate", "Basic realm=\"Restricted Content\"")
+                                    .setHeader("Content-Type", "text/html; charset=utf-8")
+                                    .body("<html><body>Unauthorized</body></html>")
+                                    .build()
+                            } else {
+                                html("<html><head><title>In</title></head><body>Welcome</body></html>")
+                            }
                         }
 
                         else -> {
@@ -188,6 +204,34 @@ class BrowserScreenInstrumentedTest {
             SystemClock.sleep(SETTLE_MILLIS)
             onMain(scenario) { assertEquals(autoUrl, it.browserHost.webView.url) }
             assertFalse(requests.any { it.url.encodedPath == "/second.html" })
+        }
+    }
+
+    @Test fun httpBasicAuthShowsThePromptAndSubmittingCredentialsLoadsThePage() {
+        launch(protectedUrl).use { scenario ->
+            // The 401 challenge raises the credential prompt instead of being silently cancelled.
+            awaitTrue("auth prompt never appeared") {
+                onMain(scenario) { it.browserViewModel.authPrompt.value } != null
+            }
+            onMain(scenario) {
+                assertEquals(
+                    "Restricted Content",
+                    it.browserViewModel.authPrompt.value
+                        ?.realm,
+                )
+            }
+
+            onMain(scenario) { it.browserViewModel.submitHttpAuth("alice", "s3cret") }
+
+            // The page loads once credentials are supplied, and the prompt is gone.
+            awaitLoaded(scenario, protectedUrl)
+            awaitTrue("auth prompt never cleared") {
+                onMain(scenario) { it.browserViewModel.authPrompt.value } == null
+            }
+            assertTrue(
+                "no authenticated request reached the server",
+                requests.any { it.url.encodedPath == "/protected.html" && it.headers["Authorization"] != null },
+            )
         }
     }
 
